@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+
+    <meta charset="UTF-8">
+    <meta name="viewport content=" width="device-width," initial-scale="1.0&quot;">
+    &lt;&gt;Chaotic Attractors
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.8.0/lib/p5.js"></script>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #0a0a12;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        #controls {
+            position: absolute;
+            top:10px;
+            right: 10px;
+            background-color: rgba(10, 10, 20, 0.85);
+            padding: 15px;
+            border-radius: 8px;
+            color: #e0e0ff;
+            width: 250px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
+            transition: all 0.3s ease;
+        }
+        #controls h2 {
+            margin-top: 0;
+            color: #7fdbff;
+            font-size: 1.2em;
+        }
+        .control-group {
+            margin-bottom: 10px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 0.9em;
+        }
+        button, select {
+            background-color: #1a1a2e;
+            color: #e0e0ff;
+            border: 1px solid #3d3d5c;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        button:hover {
+            background-color: #2a2a3e;
+        }
+        input[type="range"] {
+            width: 100%;
+        }
+        #toggle-controls {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 100;
+            background-color: rgba(10, 10, 20, 0.85);
+            color: #e0e0ff;
+            border: 1px solid #3d3d5c;
+            padding: 8px 15px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .info-tooltip {
+            position: absolute;
+            background-color: rgba(20, 20, 40, 0.95);
+            padding: 10px;
+            border-radius: 5px;
+            max-width: 200px;
+            font-size: 0.8em;
+            display: none;
+            z-index: 200;
+        }
+    
+
+<base target="_self">
+
+
+    <div id="controls">
+        <h2>Chaotic Attractors</h2>
+        <div class="control-group">
+            <label for="time-speed">Time Speed</label>
+            <input type="range" id="time-speed" min="0.1" max="3" step="0.1" value="1">
+        </div>
+        <div class="control-group">
+            <label for="field-intensity">Field Intensity</label>
+            <input type="range" id="field-intensity" min="0.1" max="2" step="0.1" value="1">
+        </div>
+        <div class="control-group">
+            <label for="trail-length">Trail Length</label>
+            <input type="range" id="trail-length" min="10" max="200" step="10" value="100">
+        </div>
+        <div class="control-group">
+            <label for="color-mode">Color Mode</label>
+            <select id="color-mode">
+                <option value="energy">Energy Gradient</option>
+                <option value="velocity">Velocity</option>
+                <option value="time">Time</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <button id="launch-btn">Launch Particles</button>
+            <button id="reset-btn">Reset System</button>
+        </div>
+        <div class="control-group">
+            <label><input type="checkbox" id="show-info" checked=""> Show Info</label>
+        </div>
+    </div>
+    <button id="toggle-controls">Toggle Controls</button>
+    <div class="info-tooltip" id="info-tooltip">
+        <h3>The Butterfly Effect</h3>
+        <p>Small differences in initial conditions can lead to vastly different outcomes in complex systems. These twin particles start nearly identical but diverge dramatically over time.</p>
+    </div>
+
+    <script>
+        const sketch = (p) => {
+            let particles = [];
+            let flowField = [];
+            let fieldResolution = 20;
+            let time = 0;
+            let timeSpeed = 1;
+            let fieldIntensity = 1;
+            let trailLength = 100;
+            let colorMode = 'energy';
+            let showInfo = true;
+            let infoTooltip;
+            let controlsVisible = true;
+
+            class Particle {
+                constructor(x, y, color, isTwin = false) {
+                    this.pos = p.createVector(x, y);
+                    this.vel = p.createVector(p.random(-0.5, 0.5), p.random(-0.5, 0.5));
+                    this.acc = p.createVector();
+                    this.maxSpeed = 3;
+                    this.prevPos = this.pos.copy();
+                    this.history = [];
+                    this.color = color;
+                    this.isTwin = isTwin;
+                    this.energy = 0;
+                }
+
+                update() {
+                    this.prevPos = this.pos.copy();
+                    this.vel.add(this.acc);
+                    this.vel.limit(this.maxSpeed);
+                    this.pos.add(this.vel);
+                    this.acc.mult(0);
+                    this.energy = this.vel.mag() / this.maxSpeed;
+
+                    this.history.push(this.pos.copy());
+                    if (this.history.length > trailLength) {
+                        this.history.splice(0, 1);
+                    }
+                }
+
+                applyForce(force) {
+                    this.acc.add(force);
+                }
+
+                follow(field) {
+                    const x = p.constrain(p.floor(this.pos.x / fieldResolution), 0, p.floor(p.width / fieldResolution) - 1);
+                    const y = p.constrain(p.floor(this.pos.y / fieldResolution), 0, p.floor(p.height / fieldResolution) - 1);
+                    const index = x + y * p.floor(p.width / fieldResolution);
+                    const force = field[index].copy();
+                    force.mult(fieldIntensity * 0.5);
+                    this.applyForce(force);
+                }
+
+                edges() {
+                    if (this.pos.x > p.width) {
+                        this.pos.x = 0;
+                        this.prevPos.x = 0;
+                    }
+                    if (this.pos.x < 0) {
+                        this.pos.x = p.width;
+                        this.prevPos.x = p.width;
+                    }
+                    if (this.pos.y > p.height) {
+                        this.pos.y = 0;
+                        this.prevPos.y = 0;
+                    }
+                    if (this.pos.y < 0) {
+                        this.pos.y = p.height;
+                        this.prevPos.y = p.height;
+                    }
+                }
+
+                show() {
+                    p.strokeWeight(1);
+                    
+                    // Draw trail
+                    for (let i = 0; i < this.history.length - 1; i++) {
+                        const alpha = p.map(i, 0, this.history.length, 10, 200);
+                        let col;
+                        
+                        if (colorMode === 'energy') {
+                            const energy = p.map(i, 0, this.history.length, 0, this.energy);
+                            col = p.color(
+                                p.map(energy, 0, 1, 50, 255),
+                                p.map(energy, 0, 1, 100, 50),
+                                p.map(energy, 0, 1, 150, 50),
+                                alpha
+                            );
+                        } else if (colorMode === 'velocity') {
+                            const vel = p.map(i, 0, this.history.length, 0, this.vel.mag() / this.maxSpeed);
+                            col = p.color(
+                                p.map(vel, 0, 1, 100, 255),
+                                p.map(vel, 0, 1, 150, 50),
+                                p.map(vel, 0, 1, 200, 50),
+                                alpha
+                            );
+                        } else { // time
+                            col = p.color(
+                                p.map(i, 0, this.history.length, 100, 255),
+                                p.map(i, 0, this.history.length, 150, 50),
+                                p.map(i, 0, this.history.length, 200, 50),
+                                alpha
+                            );
+                        }
+                        
+                        p.stroke(col);
+                        p.line(
+                            this.history[i].x, this.history[i].y,
+                            this.history[i + 1].x, this.history[i + 1].y
+                        );
+                    }
+
+                    // Draw particle
+                    p.strokeWeight(2);
+                    if (this.isTwin) {
+                        p.stroke(255, 100, 100, 200);
+                    } else {
+                        p.stroke(100, 100, 255, 200);
+                    }
+                    p.point(this.pos.x, this.pos.y);
+                }
+            }
+
+            p.setup = () => {
+                const canvas = p.createCanvas(p.windowWidth, p.windowHeight);
+                canvas.position(0, 0);
+                p.colorMode(p.HSB, 255);
+                p.background(0);
+                
+                initFlowField();
+                createParticles();
+                
+                // Setup controls
+                p.select('#time-speed').input(() => {
+                    timeSpeed = p.select('#time-speed').value();
+                });
+                
+                p.select('#field-intensity').input(() => {
+                    fieldIntensity = p.select('#field-intensity').value();
+                });
+                
+                p.select('#trail-length').input(() => {
+                    trailLength = p.select('#trail-length').value();
+                });
+                
+                p.select('#color-mode').changed(() => {
+                    colorMode = p.select('#color-mode').value();
+                });
+                
+                p.select('#launch-btn').mousePressed(() => {
+                    launchParticles();
+                });
+                
+                p.select('#reset-btn').mousePressed(() => {
+                    resetSystem();
+                });
+                
+                p.select('#show-info').changed(() => {
+                    showInfo = p.select('#show-info').checked();
+                });
+                
+                p.select('#toggle-controls').mousePressed(() => {
+                    controlsVisible = !controlsVisible;
+                    p.select('#controls').style('display', controlsVisible ? 'block' : 'none');
+                    localStorage.setItem('controlsVisible', controlsVisible);
+                });
+                
+                // Check localStorage for controls visibility
+                const storedVisibility = localStorage.getItem('controlsVisible');
+                if (storedVisibility !== null) {
+                    controlsVisible = storedVisibility === 'true';
+                    p.select('#controls').style('display', controlsVisible ? 'block' : 'none');
+                }
+                
+                infoTooltip = p.select('#info-tooltip');
+            };
+
+            p.draw = () => {
+                p.background(0, 10);
+                
+                // Update flow field
+                time += 0.005 * timeSpeed;
+                updateFlowField();
+                
+                // Update and display particles
+                for (let particle of particles) {
+                    particle.follow(flowField);
+                    particle.update();
+                    particle.edges();
+                    particle.show();
+                }
+                
+                // Show info tooltip if enabled
+                if (showInfo && particles.length > 0) {
+                    infoTooltip.position(particles[0].pos.x + 20, particles[0].pos.y + 20);
+                    infoTooltip.style('display', 'block');
+                } else {
+                    infoTooltip.style('display', 'none');
+                }
+            };
+
+            function initFlowField() {
+                const cols = p.floor(p.width / fieldResolution);
+                const rows = p.floor(p.height / fieldResolution);
+                flowField = new Array(cols * rows);
+                
+                for (let y = 0; y < rows; y++) {
+                    for (let x = 0; x < cols; x++) {
+                        const index = x + y * cols;
+                        flowField[index] = p.createVector();
+                    }
+                }
+            }
+
+            function updateFlowField() {
+                const cols = p.floor(p.width / fieldResolution);
+                const rows = p.floor(p.height / fieldResolution);
+                
+                for (let y = 0; y < rows; y++) {
+                    for (let x = 0; x < cols; x++) {
+                        const index = x + y * cols;
+                        const angle = p.noise(x * 0.1, y * 0.1, time) * p.TWO_PI * 4;
+                        const v = p5.Vector.fromAngle(angle);
+                        v.setMag(0.5 * fieldIntensity);
+                        flowField[index] = v;
+                    }
+                }
+            }
+
+            function createParticles() {
+                particles = [];
+                const centerX = p.width / 2;
+                const centerY = p.height / 2;
+                
+                // Create initial pair
+                particles.push(new Particle(centerX - 10, centerY, p.color(100, 100, 255)));
+                particles.push(new Particle(centerX + 10, centerY, p.color(255, 100, 100), true));
+            }
+
+            function launchParticles() {
+                const centerX = p.width / 2;
+                const centerY = p.height / 2;
+                
+                // Ensure we don't exceed maximum particles
+                if (particles.length < 100) {
+                    // Create new pair with slight differences
+                    const baseX = centerX + p.random(-50, 50);
+                    const baseY = centerY + p.random(-50, 50);
+                    
+                    particles.push(new Particle(
+                        baseX - p.random(5, 15),
+                        baseY + p.random(-5, 5),
+                        p.color(100, 100, 255)
+                    ));
+                    
+                    particles.push(new Particle(
+                        baseX + p.random(5, 15),
+                        baseY + p.random(-5, 5),
+                        p.color(255, 100, 100),
+                        true
+                    ));
+                }
+            }
+
+            function resetSystem() {
+                createParticles();
+            }
+
+            p.mousePressed = () => {
+                if (p.mouseX > 0 && p.mouseX < p.width && p.mouseY > 0 && p.mouseY < p.height) {
+                    // Create particles at mouse position
+                    if (particles.length < 100) {
+                        particles.push(new Particle(
+                            p.mouseX - 5,
+                            p.mouseY,
+                            p.color(100, 100, 255)
+                        ));
+                        
+                        particles.push(new Particle(
+                            p.mouseX + 5,
+                            p.mouseY,
+                            p.color(255, 100, 100),
+                            true
+                        ));
+                    }
+                }
+            };
+
+            p.windowResized = () => {
+                p.resizeCanvas(p.windowWidth, p.windowHeight);
+                initFlowField();
+            };
+        };
+
+        new p5(sketch);
+    </script>
+
+              
+          
+                
+          
+              
